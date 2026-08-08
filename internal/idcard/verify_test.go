@@ -43,29 +43,6 @@ func testVerifyProfile(t *testing.T) profile.Profile {
 	return p
 }
 
-// TestVerifyWithRealImages calls the real CloudAuth endpoint. Requires:
-//   - profiles.local/mamamate-verify.toml
-//   - env ALIYUN_IDCARD_TEST_FRONT_URL (a readable ID-card image URL)
-// Skips otherwise.
-func TestVerifyWithRealImages(t *testing.T) {
-	p := testVerifyProfile(t)
-	frontURL := os.Getenv("ALIYUN_IDCARD_TEST_FRONT_URL")
-	if frontURL == "" {
-		t.Skip("set ALIYUN_IDCARD_TEST_FRONT_URL to a readable ID-card image URL to run this integration test")
-	}
-	backURL := os.Getenv("ALIYUN_IDCARD_TEST_BACK_URL")
-
-	v := NewVerifier(p)
-	res, err := v.Verify(context.Background(), frontURL, backURL)
-	if err != nil {
-		t.Fatalf("Verify error: %v", err)
-	}
-	if !res.OK {
-		t.Fatalf("API call failed: %s", res.ErrorMessage)
-	}
-	t.Logf("verify result: passed=%v name=%q requestId=%q", res.Passed, res.Name, res.RequestID)
-}
-
 func TestParseResponsePassed(t *testing.T) {
 	// This is the REAL CloudAuth response structure, captured from an actual
 	// Id2MetaVerifyWithOCR call with front+back images. CardInfo includes
