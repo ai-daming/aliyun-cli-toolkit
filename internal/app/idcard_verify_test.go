@@ -95,3 +95,52 @@ func TestIdcardVerifyMissingProfile(t *testing.T) {
 		t.Fatal("verify with missing profile should error")
 	}
 }
+
+func TestIdcardProfileListAndRemove(t *testing.T) {
+	t.Setenv("ALIYUN_MEDIA_CLI_HOME", t.TempDir())
+	// add two profiles
+	for _, n := range []string{"p1", "p2"} {
+		root := NewIdcardRootCmd()
+		root.SetArgs([]string{"profile", "add", n, "--region", "r", "--access-key-id", "a", "--access-key-secret", "s"})
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// list
+	root := NewIdcardRootCmd()
+	root.SetArgs([]string{"profile", "list"})
+	out := &bytes.Buffer{}
+	root.SetOut(out)
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var res struct {
+		Profiles []string `json:"profiles"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Profiles) != 2 {
+		t.Fatalf("list = %+v", res)
+	}
+	// remove one
+	root2 := NewIdcardRootCmd()
+	root2.SetArgs([]string{"profile", "remove", "p1"})
+	if err := root2.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	// list again — should have one left
+	root3 := NewIdcardRootCmd()
+	root3.SetArgs([]string{"profile", "list"})
+	out3 := &bytes.Buffer{}
+	root3.SetOut(out3)
+	if err := root3.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(out3.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Profiles) != 1 || res.Profiles[0] != "p2" {
+		t.Fatalf("after remove, list = %+v", res)
+	}
+}
