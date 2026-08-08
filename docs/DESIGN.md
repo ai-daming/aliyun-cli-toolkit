@@ -101,7 +101,8 @@ stdout（public）：
   "key": "provider-media/2026/08/discharge.jpg",
   "visibility": "public",
   "url": "https://oss.mamamate.cn/provider-media/2026/08/discharge.jpg",
-  "size": 234567
+  "size": 234567,
+  "etag": "d41d8cd98f00b204e9800998ecf8427e"
 }
 ```
 
@@ -110,9 +111,12 @@ stdout（private）——注意 `url` 字段缺省：
 {
   "key": "provider-private-media/.../x.jpg",
   "visibility": "private",
-  "size": 89012
+  "size": 89012,
+  "etag": "d41d8cd98f00b204e9800998ecf8427e"
 }
 ```
+
+`etag` 字段说明：对应 OSS 对象的 `ETag`。对单次 PUT 的小文件，**ETag = 内容 MD5**，调用方可本地算 MD5 与之比对，做上传完整性校验（这正是 mm-resume 现在 `confirm`+sha256 在做的事，这里用 ETag 更直接）。注意：分片上传的大对象 ETag ≠ 内容 MD5，格式为 `xxx-N`，不能直接用于完整性校验——本 CLI 的 `upload` 走单 PUT，etag 可靠；`presign-put` 的分片场景不输出 etag。
 
 ### 子命令：presign-put
 
@@ -178,7 +182,7 @@ aliyun-media-cli resolve --profile mamamate --key provider-media/.../x.jpg
 aliyun-media-cli stat --profile mamamate --key some/key
 ```
 ```json
-{"exists": true, "size": 234567, "contentType": "image/jpeg"}
+{"exists": true, "size": 234567, "contentType": "image/jpeg", "etag": "d41d8cd98f00b204e9800998ecf8427e"}
 ```
 ```json
 {"exists": false}
