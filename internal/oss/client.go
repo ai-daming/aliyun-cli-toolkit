@@ -106,7 +106,14 @@ func (c *Client) ossEndpoint() string {
 }
 
 func newOSSClient(endpoint, ak, sk, token string) (*oss.Client, error) {
-	return oss.New(endpoint, ak, sk, oss.SecurityToken(token))
+	// Force HTTPS: the SDK picks scheme from the endpoint prefix, defaulting to
+	// HTTP when bare. Signed URLs and public URLs must use HTTPS so that STS
+	// security tokens and private media never travel over plaintext.
+	ep := endpoint
+	if !strings.HasPrefix(ep, "http://") && !strings.HasPrefix(ep, "https://") {
+		ep = "https://" + ep
+	}
+	return oss.New(ep, ak, sk, oss.SecurityToken(token))
 }
 
 // Upload puts an object into OSS. When private is true, the object ACL is set

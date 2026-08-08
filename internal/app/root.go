@@ -9,9 +9,11 @@ import (
 // NewRootCmd assembles the full command tree.
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:     "aliyun-media-cli",
-		Short:   "Stateless Alibaba Cloud OSS media CLI",
-		Version: buildinfo.Version,
+		Use:           "aliyun-media-cli",
+		Short:         "Stateless Alibaba Cloud OSS media CLI",
+		Version:       buildinfo.Version,
+		SilenceErrors: true, // main() emits the JSON error object
+		SilenceUsage:  true, // usage dump is noise for JSON consumers
 	}
 	root.AddCommand(newProfileCmd())
 	root.AddCommand(newUploadCmd())
