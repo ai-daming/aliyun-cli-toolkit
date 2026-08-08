@@ -1,0 +1,97 @@
+package app
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// setupIdcardIntegrationHome copies profiles.local/<name>.toml into a temp
+// profiles/ dir. Skips if absent.
+func setupIdcardIntegrationHome(t *testing.T) string {
+	t.Helper()
+	name := os.Getenv("ALIYUN_IDCARD_TEST_PROFILE")
+	if name == "" {
+		name = "mamamate-verify"
+	}
+	repoRoot, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(repoRoot, "profiles.local", name+".toml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Skipf("integration profile %q not found at %s: %v", name, src, err)
+	}
+	dir := t.TempDir()
+	dst := filepath.Join(dir, "profiles", name+".toml")
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ALIYUN_MEDIA_CLI_HOME", dir)
+	return name
+}
+
+// TestIdcardVerifyRoundTrip exercises the verify subcommand end-to-end against
+// real CloudAuth, using a bogus image URL. The call reaches CloudAuth (HTTP
+// round-trip), so the full cobra → profile → verifier → JSON path is covered.
+// Result may be ok=false or passed=false, but the command must produce JSON.
+func TestIdcardVerifyRoundTrip(t *testing.T) {
+	pname := setupIdcardIntegrationHome(t)
+	root := NewIdcardRootCmd()
+	root.SetArgs([]string{
+		"verify",
+		"--profile", pname,
+		"--front-url", "https://example.com/no-such-idcard-" + uniqueKey("idc") + ".jpg",
+	})
+	out := &bytes.Buffer{}
+	root.SetOut(out)
+	root.SetErr(out)
+	_ = root.Execute() // may error (API rejects bogus image) — that's fine
+
+	var res map[string]any
+	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
+		t.Fatalf("verify must emit JSON, got: %s\n%v", out.String(), err)
+	}
+	// ok may be true or false; just ensure it's present
+	if _, has := res["ok"]; !has {
+		t.Fatalf("verify result missing 'ok': %s", out.String())
+	}
+}
+
+func TestIdcardProfileAddShow(t *testing.T) {
+	t.Setenv("ALIYUN_MEDIA_CLI_HOME", t.TempDir())
+	root := NewIdcardRootCmd()
+	root.SetArgs([]string{"profile", "add", "vp", "--region", "cn-shanghai", "--endpoint", "cloudauth.cn-shanghai.aliyuncs.com", "--access-key-id", "AK", "--access-key-secret", "SK"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	root2 := NewIdcardRootCmd()
+	root2.SetArgs([]string{"profile", "show", "vp"})
+	out := &bytes.Buffer{}
+	root2.SetOut(out)
+	if err := root2.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var shown map[string]any
+	if err := json.Unmarshal(out.Bytes(), &shown); err != nil {
+		t.Fatal(err)
+	}
+	if shown["access-key-secret"] != "***" {
+		t.Fatalf("secret not masked: %v", shown["access-key-secret"])
+	}
+}
+
+func TestIdcardVerifyMissingProfile(t *testing.T) {
+	t.Setenv("ALIYUN_MEDIA_CLI_HOME", t.TempDir())
+	root := NewIdcardRootCmd()
+	root.SetArgs([]string{"verify", "--profile", "ghost", "--front-url", "https://x/y.jpg"})
+	if err := root.Execute(); err == nil {
+		t.Fatal("verify with missing profile should error")
+	}
+}
