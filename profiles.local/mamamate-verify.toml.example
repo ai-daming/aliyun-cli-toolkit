@@ -1,0 +1,13 @@
+# aliyun-idcard-cli profile 模板
+# 复制为 <profile-name>.toml 填入真实值。真实 .toml 文件不进 git。
+#
+# 字段说明：
+#   region            — CloudAuth region（通常 cn-shanghai）
+#   endpoint          — CloudAuth endpoint（如 cloudauth.cn-shanghai.aliyuncs.com）
+#   access-key-id     — 有权调用 Id2MetaVerifyWithOCR 的 AK
+#   access-key-secret — 对应 SK
+
+region = "cn-shanghai"
+endpoint = "cloudauth.cn-shanghai.aliyuncs.com"
+access-key-id = "YOUR_AK"
+access-key-secret = "YOUR_SK"

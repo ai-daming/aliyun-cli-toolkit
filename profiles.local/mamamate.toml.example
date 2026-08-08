@@ -1,0 +1,19 @@
+# aliyun-media-cli profile 模板
+# 复制为 <profile-name>.toml 填入真实值。真实 .toml 文件不进 git。
+#
+# 字段说明：
+#   bucket          — OSS bucket 名
+#   region          — OSS region（如 cn-huhehaote）
+#   endpoint        — OSS endpoint（如 oss-cn-huhehaote.aliyuncs.com）
+#   role-arn        — RAM 角色 ARN，用于 STS AssumeRole
+#   access-key-id   — 有权 AssumeRole 该角色的 AK
+#   access-key-secret — 对应 SK
+#   public-domain   — 可选；公开对象的稳定 CDN/自定义域名。留空则用官方域名
+
+bucket = "your-bucket"
+region = "cn-huhehaote"
+endpoint = "oss-cn-huhehaote.aliyuncs.com"
+role-arn = "acs:ram::YOUR_ACCOUNT_ID:role/oss-sts-role"
+access-key-id = "YOUR_AK"
+access-key-secret = "YOUR_SK"
+public-domain = "oss.your-domain.com"

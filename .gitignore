@@ -7,9 +7,20 @@
 # Go
 /vendor/
 
-# Local config / secrets (never commit profiles)
+# ─── Secrets — NEVER commit ──────────────────────────────────────
+# Real credentials and real test assets live in profiles.local/ and
+# test-assets/. Only *.example templates are tracked in git.
+profiles.local/*
+!profiles.local/*.example
+test-assets/*
+!test-assets/.gitkeep
+!test-assets/README.md
 *.toml.user
 profiles.toml
+.env
+.env.*
+!.env.example
+# ─── End secrets ─────────────────────────────────────────────────
 
 # OS
 .DS_Store
