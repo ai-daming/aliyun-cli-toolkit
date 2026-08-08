@@ -21,10 +21,12 @@ type Result struct {
 	Passed        bool           `json:"passed"`
 	Name          string         `json:"name,omitempty"`
 	IDCard        string         `json:"idCard,omitempty"`
-	Gender        string         `json:"gender,omitempty"`
 	Ethnicity     string         `json:"ethnicity,omitempty"`
 	BirthDate     string         `json:"birthDate,omitempty"`
 	Address       string         `json:"address,omitempty"`
+	Authority     string         `json:"authority,omitempty"`
+	StartDate     string         `json:"startDate,omitempty"`
+	EndDate       string         `json:"endDate,omitempty"`
 	RequestID     string         `json:"requestId,omitempty"`
 	ErrorMessage  string         `json:"errorMessage,omitempty"`
 	VerifyMessage string         `json:"verifyMessage,omitempty"`
@@ -170,6 +172,9 @@ func parseResponse(body []byte) (Result, error) {
 			r.Ethnicity = str(card["nationality"])
 			r.BirthDate = str(card["birthDate"])
 			r.Address = str(card["address"])
+			r.Authority = str(card["authority"])
+			r.StartDate = str(card["startDate"])
+			r.EndDate = str(card["endDate"])
 		}
 	}
 
