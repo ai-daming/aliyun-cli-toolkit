@@ -1,12 +1,19 @@
 package app
 
 import (
+	"errors"
+
 	"github.com/spf13/cobra"
 
 	"github.com/mamamate/aliyun-cli-toolkit/internal/idcard"
 	"github.com/mamamate/aliyun-cli-toolkit/internal/output"
 	"github.com/mamamate/aliyun-cli-toolkit/internal/profile"
 )
+
+// errVerifyCallFailed is returned when the CloudAuth API call itself failed
+// (ok=false), so the process exits non-zero. The full result JSON is already
+// on stdout; this only drives the exit code.
+var errVerifyCallFailed = errors.New("idcard verify call failed (see stdout JSON for details)")
 
 // idcard profiles store region/endpoint/AK/SK. They omit the OSS fields.
 // We reuse profile.Profile (extra fields are empty, omitted via omitempty).
@@ -95,7 +102,17 @@ func newIdcardVerifyCmd() *cobra.Command {
 				_ = output.PrintJSON(cmd.OutOrStdout(), res)
 				return err
 			}
-			return output.PrintJSON(cmd.OutOrStdout(), res)
+			if err := output.PrintJSON(cmd.OutOrStdout(), res); err != nil {
+				return err
+			}
+			// ok=false means the API call itself failed (e.g. unreadable image,
+			// auth error). That's a caller-side failure → non-zero exit so
+			// scripts can detect it. ok=true+passed=false (name/ID mismatch)
+			// is a legitimate business result → exit 0.
+			if !res.OK {
+				return errVerifyCallFailed
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&profileName, "profile", "", "Profile name (required)")

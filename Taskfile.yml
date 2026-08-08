@@ -1,13 +1,11 @@
 version: '3'
 
 vars:
-  APP_NAME: aliyun-media-cli
   DIST_DIR: dist
-  MAIN_PACKAGE: ./cmd/aliyun-media-cli
   APP_VERSION:
     sh: |
-      if [ -n "${ALIYUN_MEDIA_CLI_VERSION:-}" ]; then
-        printf "%s" "$ALIYUN_MEDIA_CLI_VERSION"
+      if [ -n "${ALIYUN_CLI_VERSION:-}" ]; then
+        printf "%s" "$ALIYUN_CLI_VERSION"
       else
         printf "%s" "dev"
       fi
@@ -25,6 +23,8 @@ vars:
     -X github.com/mamamate/aliyun-cli-toolkit/internal/buildinfo.Version={{.APP_VERSION}}
     -X github.com/mamamate/aliyun-cli-toolkit/internal/buildinfo.Commit={{.COMMIT}}
     -X github.com/mamamate/aliyun-cli-toolkit/internal/buildinfo.BuildTime={{.BUILD_TIME}}
+  # Both CLIs in this toolkit
+  BINARIES: aliyun-media-cli,aliyun-idcard-cli
 
 env:
   CGO_ENABLED: 0
@@ -48,22 +48,28 @@ tasks:
   test-cover:
     desc: Run tests with coverage
     cmds:
-      - go test ./... -coverprofile=coverage.out -covermode=atomic
+      - go test ./internal/... -coverprofile=coverage.out -covermode=atomic
       - go tool cover -func=coverage.out | tail -1
 
-  build:
-    desc: Build the CLI binary
+  vet:
+    desc: Run go vet
     cmds:
-      - go build -ldflags "{{.LDFLAGS}}" -o bin/{{.APP_NAME}} {{.MAIN_PACKAGE}}
+      - go vet ./...
+
+  build:
+    desc: Build both CLI binaries
+    cmds:
+      - for: { var: BINARIES, split: "," }
+        cmd: go build -ldflags "{{.LDFLAGS}}" -o bin/{{.ITEM}} ./cmd/{{.ITEM}}
 
   release:
     desc: Cross-compile release binaries (linux/mac × amd64/arm64)
     cmds:
       - mkdir -p {{.DIST_DIR}}
-      - for: { var: PLATFORMS, split: "," }
+      - for: { var: BINARIES, split: "," }
         cmd: |
-          OS="${PLATFORMS%/*}"
-          ARCH="${PLATFORMS#*/}"
-          GOOS=$OS GOARCH=$ARCH go build -ldflags "{{.LDFLAGS}}" -o {{.DIST_DIR}}/{{.APP_NAME}}-${OS}-${ARCH} {{.MAIN_PACKAGE}}
-    vars:
-      PLATFORMS: linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
+          for PLATFORM in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            OS="${PLATFORM%/*}"
+            ARCH="${PLATFORM#*/}"
+            GOOS=$OS GOARCH=$ARCH go build -ldflags "{{.LDFLAGS}}" -o {{.DIST_DIR}}/{{.ITEM}}-${OS}-${ARCH} ./cmd/{{.ITEM}}
+          done
