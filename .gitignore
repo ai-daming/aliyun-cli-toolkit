@@ -1,0 +1,19 @@
+# Binaries
+/bin/
+/aliyun-media-cli
+/aliyun-idcard-cli
+*.exe
+
+# Go
+/vendor/
+
+# Local config / secrets (never commit profiles)
+*.toml.user
+profiles.toml
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
