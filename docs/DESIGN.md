@@ -34,7 +34,7 @@ Mamamate（一个月嫂/妈妈服务平台）的 Java server 现在把阿里云 
 | | `aliyun-media-cli` | `aliyun-idcard-cli` |
 |---|---|---|
 | 绑定 | 阿里云 OSS | 阿里云 CloudAuth / OCR |
-| 能力 | upload / presign-put / resolve / stat | verify（OCR + 二要素一体化） |
+| 能力 | upload / resolve / stat | verify（OCR + 二要素一体化） |
 | 凭证 | OSS AK/SK + roleArn（运行时 AssumeRole） | CloudAuth AK/SK（独立一套） |
 | 依赖 | 无 | 无（只吃 URL，不依赖 media-cli） |
 
@@ -54,7 +54,7 @@ idcard-cli 因此可以独立核验**任何来源**的身份证图 URL，不限�
 - **不做跨云抽象。**
 - **不做 Mamamate 业务语义。** 不知道"月嫂"、"租户"、"provider-media-asset"这些概念。key 就是 key，上传就是上传。业务语义留给宿主应用。
 - **不做 key 自动生成。** key 由调用方决定。CLI 可以提供 `--key-prefix` 便利参数，但不替调用方做业务命名决策。
-- **不做确认（confirm）环节。** Mamamate 现有 presign→PUT→confirm 三步里的 confirm，是因为它要在服务端登记资产绑定。CLI 模型里 key 由调用方定，上传成功就是成功，无需 confirm。
+- **不做 presign-put 和确认（confirm）环节。** Mamamate 现有 presign→PUT→confirm 三步，是因为浏览器直传场景需要。CLI 模型里调用方直接用 `upload` 一步传完；需要查对象是否到位用 `stat`。若将来真有"大文件不想进 CLI 内存"或"浏览器直传"的场景，再补 `presign-put`——届时 `stat` 已经在了，编排自然成立。
 
 ## `aliyun-media-cli` 契约
 
@@ -116,34 +116,7 @@ stdout（private）——注意 `url` 字段缺省：
 }
 ```
 
-`etag` 字段说明：对应 OSS 对象的 `ETag`。对单次 PUT 的小文件，**ETag = 内容 MD5**，调用方可本地算 MD5 与之比对，做上传完整性校验（这正是 mm-resume 现在 `confirm`+sha256 在做的事，这里用 ETag 更直接）。注意：分片上传的大对象 ETag ≠ 内容 MD5，格式为 `xxx-N`，不能直接用于完整性校验——本 CLI 的 `upload` 走单 PUT，etag 可靠；`presign-put` 的分片场景不输出 etag。
-
-### 子命令：presign-put
-
-返回一个预签名上传 URL，调用方自己 PUT 字节。适合大文件、流式上传、或调用方已经在自己管理字节流的场景。
-
-```bash
-aliyun-media-cli presign-put \
-  --profile mamamate \
-  --key some/large.bin \
-  --ttl 5m \
-  --content-type application/octet-stream \
-  [--private]
-```
-```json
-{
-  "key": "some/large.bin",
-  "uploadUrl": "https://mamamate.oss-cn-huhehaote.aliyuncs.com/...signed...",
-  "method": "PUT",
-  "headers": {
-    "Content-Type": "application/octet-stream",
-    "x-oss-object-acl": "private"
-  },
-  "expiresAt": "2026-08-08T17:30:00Z"
-}
-```
-
-`headers` 字段是调用方 PUT 时**必须**带上的请求头（签名绑定了它们，不带会被 OSS 拒）。这是 Mamamate `OssStsService.presignPut` 的 `x-oss-object-acl` + Content-Type 逻辑的直接对应。
+`etag` 字段说明：对应 OSS 对象的 `ETag`。对单次 PUT 的小文件，**ETag = 内容 MD5**，调用方可本地算 MD5 与之比对，做上传完整性校验（这正是 mm-resume 现在 `confirm`+sha256 在做的事，这里用 ETag 更直接）。本 CLI 的 `upload` 走单 PUT，etag 即 MD5，可靠。
 
 ### 子命令：resolve
 
@@ -251,7 +224,7 @@ aliyun-cli-toolkit/
 │   ├── aliyun-media-cli/      # media CLI 入口 main.go
 │   └── aliyun-idcard-cli/     # idcard CLI 入口 main.go
 ├── internal/
-│   ├── media/                 # OSS 操作实现（upload/presign/resolve/stat）
+│   ├── media/                 # OSS 操作实现（upload/resolve/stat）
 │   ├── idcard/                # CloudAuth 核验实现
 │   ├── profile/               # 共享：profile 管理（add/list/default/remove）
 │   ├── osssign/               # 共享：OSS 签名/STS 工具（如复用）

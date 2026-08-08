@@ -2,7 +2,7 @@
 
 两个无状态的 Go CLI，把"上传/读取阿里云 OSS 资源"和"阿里云身份证 OCR+核验"从任何宿主应用里解耦出来。
 
-- **`aliyun-media-cli`** — 阿里云 OSS：upload / presign-put / resolve / stat
+- **`aliyun-media-cli`** — 阿里云 OSS：upload / resolve / stat
 - **`aliyun-idcard-cli`** — 阿里云 CloudAuth：身份证 OCR + 二要素核验
 
 ## 特点
