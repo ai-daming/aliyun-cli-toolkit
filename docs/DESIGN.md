@@ -147,6 +147,8 @@ aliyun-media-cli resolve --profile mamamate --key provider-media/.../x.jpg
 
 公私判断：**调用方显式声明**，CLI 不猜。`resolve` 默认按私密处理（现签短时 URL）——这是更安全的默认；加 `--public` 则直接返回稳定 URL（不校验对象是否真的公开，因为公开对象的 ACL 就是公开，无需查）。设计理由：HEAD 读 ACL 是一次额外网络往返，而调用方在 upload 时就知道自己传的是公是私，这个信息不该丢；让 CLI 去"探测"ACL 既慢又引入新的失败模式。
 
+resolve **只返回 URL，不返回 etag/size 等元信息**。它的职责是把 key 变成可读 URL，一件事；要对象元信息走 `stat`。混进去会让 resolve 对公开对象也得多一次 HEAD，破坏"纯转换"的语义。
+
 ### 子命令：stat
 
 查对象是否存在及元信息，不下载内容。对应 Mamamate `OssStsService.objectContentLength`。
