@@ -74,10 +74,11 @@ aliyun-media-cli profile add mamamate \
   --public-domain oss.mamamate.cn        # 可选；公开对象的稳定 CDN/自定义域名
 
 aliyun-media-cli profile list
-aliyun-media-cli profile default mamamate   # 设默认 profile，省去每次 --profile
 aliyun-media-cli profile remove mamamate
 aliyun-media-cli profile show mamamate      # 脱敏显示（不输出 secret）
 ```
+
+**没有默认 profile。** `--profile` 是所有操作命令的必填项，CLI 不会"记住"上次用的 profile。理由：一个工具管多套凭证时，默认值会让操作者在本意是生产、实际是测试的 profile 上误操作私密数据。显式传 `--profile` 把"用哪套凭证"变成每次清醒的决定。
 
 配置存 `~/.config/aliyun-media-cli/profiles.toml`（权限 0600）。支持 `ALIYUN_MEDIA_CLI_HOME` 环境变量覆盖配置目录（便于 CI/容器）。
 
@@ -195,8 +196,11 @@ aliyun-idcard-cli profile add production \
   --access-key-secret "${VERIFY_SK}"
 
 aliyun-idcard-cli profile list
-aliyun-idcard-cli profile default production
+aliyun-idcard-cli profile remove production
+aliyun-idcard-cli profile show production
 ```
+
+与 media-cli 一致：`--profile` 必填，没有默认 profile。
 
 凭证独立于 media-cli——CloudAuth 的 AK/SK 不是 OSS 那套。这与 Mamamate 现状一致（`aliyun.verify.*` vs `oss.sts.*`）。
 
