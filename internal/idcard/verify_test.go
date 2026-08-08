@@ -44,9 +44,9 @@ func testVerifyProfile(t *testing.T) profile.Profile {
 }
 
 func TestParseResponsePassed(t *testing.T) {
-	// This is the REAL CloudAuth response structure, captured from an actual
-	// Id2MetaVerifyWithOCR call with front+back images. CardInfo includes
-	// authority/startDate/endDate (from the back image).
+	// This matches the REAL CloudAuth response structure (captured from an
+	// actual Id2MetaVerifyWithOCR call), with sensitive values replaced by
+	// fictitious data. CardInfo includes authority/startDate/endDate (back image).
 	body := []byte(`{
 		"Code": "200",
 		"Message": "success",
