@@ -7,7 +7,9 @@ vars:
       if [ -n "${ALIYUN_CLI_VERSION:-}" ]; then
         printf "%s" "$ALIYUN_CLI_VERSION"
       else
-        printf "%s" "dev"
+        # Fall back to the most recent tag (e.g. v0.1.0); adds -N-g<sha> and
+        # -dirty when there are commits past the tag or a dirty worktree.
+        git describe --tags --always --dirty 2>/dev/null || printf "dev"
       fi
   COMMIT:
     sh: |
@@ -63,7 +65,7 @@ tasks:
         cmd: go build -ldflags "{{.LDFLAGS}}" -o bin/{{.ITEM}} ./cmd/{{.ITEM}}
 
   release:
-    desc: Cross-compile release binaries (linux/mac × amd64/arm64)
+    desc: Cross-compile release binaries (linux/mac × amd64/arm64) + checksums
     cmds:
       - mkdir -p {{.DIST_DIR}}
       - for: { var: BINARIES, split: "," }
@@ -73,3 +75,5 @@ tasks:
             ARCH="${PLATFORM#*/}"
             GOOS=$OS GOARCH=$ARCH go build -ldflags "{{.LDFLAGS}}" -o {{.DIST_DIR}}/{{.ITEM}}-${OS}-${ARCH} ./cmd/{{.ITEM}}
           done
+      - |
+        cd {{.DIST_DIR}} && { command -v sha256sum >/dev/null && sha256sum aliyun-media-cli-* aliyun-idcard-cli-* || shasum -a 256 aliyun-media-cli-* aliyun-idcard-cli-*; } > checksums.txt

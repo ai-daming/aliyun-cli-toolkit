@@ -64,7 +64,8 @@ task test-cover   # 跑测试 + 覆盖率（目标 ≥85%）
 
 - [docs/DESIGN.md](docs/DESIGN.md) — 架构设计
 - [docs/plans/](docs/plans/) — 实现计划
+- [CHANGELOG.md](CHANGELOG.md) — 版本变更
 
 ## License
 
-MIT
+Apache-2.0,详见 [LICENSE](LICENSE)。

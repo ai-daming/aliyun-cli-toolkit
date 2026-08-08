@@ -290,9 +290,10 @@ func testMediaProfile(t *testing.T) profile.Profile {
 
 // TestVerifyRealIDCardPipeline runs the FULL real pipeline with actual ID-card
 // images from test-assets/:
-//   1. upload front+back images as PRIVATE to OSS (via oss.Client)
-//   2. resolve them to short-lived signed URLs
-//   3. feed those URLs to CloudAuth verify
+//  1. upload front+back images as PRIVATE to OSS (via oss.Client)
+//  2. resolve them to short-lived signed URLs
+//  3. feed those URLs to CloudAuth verify
+//
 // This is the real end-to-end test that proves the entire decoupled architecture
 // works: private media → signed URL → OCR + two-factor verification.
 //

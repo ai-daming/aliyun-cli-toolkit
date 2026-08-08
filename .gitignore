@@ -6,6 +6,8 @@
 
 # Go
 /vendor/
+/coverage.out
+/dist/
 
 # ─── Secrets — NEVER commit ──────────────────────────────────────
 # Real credentials and real test assets live in profiles.local/ and
