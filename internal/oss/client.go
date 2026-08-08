@@ -26,10 +26,10 @@ type Client struct {
 
 // NewClient builds an OSS client from a profile.
 func NewClient(p profile.Profile) (*Client, error) {
-	region := p.Region
-	if region == "" {
-		region = "cn-huhehaote"
+	if p.Region == "" {
+		return nil, fmt.Errorf("profile %q: region is required (e.g. cn-huhehaote); set it via --region or region= in the profile", p.Name)
 	}
+	region := p.Region
 	ak, sk := p.AccessKeyID, p.AccessKeySecret
 	cfg := &openapi.Config{
 		AccessKeyId:     &ak,
@@ -54,10 +54,9 @@ type UploadResult struct {
 
 // stsCreds holds temporary credentials returned by AssumeRole.
 type stsCreds struct {
-	ak     string
-	sk     string
-	token  string
-	region string
+	ak    string
+	sk    string
+	token string
 }
 
 // assumeRole obtains STS temporary credentials scoped to a single object+action.
@@ -86,15 +85,10 @@ func (c *Client) assumeRole(action, objectKey string) (*stsCreds, error) {
 		return nil, fmt.Errorf("STS returned no credentials")
 	}
 	cr := resp.Body.Credentials
-	region := c.prof.Region
-	if region == "" {
-		region = "cn-huhehaote"
-	}
 	return &stsCreds{
-		ak:     *cr.AccessKeyId,
-		sk:     *cr.AccessKeySecret,
-		token:  *cr.SecurityToken,
-		region: region,
+		ak:    *cr.AccessKeyId,
+		sk:    *cr.AccessKeySecret,
+		token: *cr.SecurityToken,
 	}, nil
 }
 

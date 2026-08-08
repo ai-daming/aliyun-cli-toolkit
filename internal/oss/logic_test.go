@@ -11,20 +11,16 @@ import (
 // These tests exercise pure-logic branches of the client that don't need
 // network or credentials, pushing coverage of defensive paths past 85%.
 
-func TestNewClientDefaultRegion(t *testing.T) {
-	// When Region is empty, NewClient must default to cn-huhehaote without error.
-	// (It only constructs the STS client config; no network call here.)
-	c, err := NewClient(profile.Profile{
-		Name:            "noremion",
+func TestNewClientRequiresRegion(t *testing.T) {
+	// When Region is empty, NewClient must fail fast — a silent region default
+	// would route OSS calls to the wrong endpoint. (No network call here.)
+	_, err := NewClient(profile.Profile{
+		Name:            "noregion",
 		AccessKeyID:     "ak",
 		AccessKeySecret: "sk",
 	})
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-	if c.prof.Region != "" {
-		// prof is stored as-is; the default is applied inside assumeRole/ossEndpoint.
-		// This assertion documents that behavior.
+	if err == nil {
+		t.Fatal("NewClient with empty region should return an error")
 	}
 }
 
