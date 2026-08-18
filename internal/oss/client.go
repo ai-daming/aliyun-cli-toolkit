@@ -21,6 +21,11 @@ import (
 	"github.com/mamamate/aliyun-cli-toolkit/internal/profile"
 )
 
+const (
+	stsConnectTimeoutMillis = 5_000
+	stsReadTimeoutMillis    = 15_000
+)
+
 // Client performs OSS operations against the bucket configured in a Profile.
 type Client struct {
 	prof             profile.Profile
@@ -54,12 +59,18 @@ func NewClient(p profile.Profile) (*Client, error) {
 		AccessKeyId:     &ak,
 		AccessKeySecret: &sk,
 		RegionId:        &region,
+		ConnectTimeout:  intPointer(stsConnectTimeoutMillis),
+		ReadTimeout:     intPointer(stsReadTimeoutMillis),
 	}
 	stsClient, err := sts.NewClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("init STS client: %w", err)
 	}
 	return &Client{prof: p, stsClient: stsClient}, nil
+}
+
+func intPointer(value int) *int {
+	return &value
 }
 
 // UploadResult is returned by Upload.
@@ -144,8 +155,14 @@ func newOSSClient(endpoint, ak, sk, token string, options ...oss.ClientOption) (
 // Upload puts an object into OSS. When private is true, the object ACL is set
 // to private and no stable URL is returned.
 func (c *Client) Upload(ctx context.Context, key string, data []byte, contentType string, private bool) (UploadResult, error) {
+	if err := ctx.Err(); err != nil {
+		return UploadResult{}, err
+	}
 	creds, err := c.assumeObjectRole("oss:PutObject", key)
 	if err != nil {
+		return UploadResult{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return UploadResult{}, err
 	}
 	ossClient, err := newOSSClient(c.ossEndpoint(), creds.ak, creds.sk, creds.token, c.ossClientOptions...)
@@ -157,7 +174,7 @@ func (c *Client) Upload(ctx context.Context, key string, data []byte, contentTyp
 		return UploadResult{}, fmt.Errorf("oss bucket: %w", err)
 	}
 
-	opts := []oss.Option{oss.ContentLength(int64(len(data)))}
+	opts := []oss.Option{oss.ContentLength(int64(len(data))), oss.WithContext(ctx)}
 	if contentType != "" {
 		opts = append(opts, oss.ContentType(contentType))
 	}
@@ -173,7 +190,7 @@ func (c *Client) Upload(ctx context.Context, key string, data []byte, contentTyp
 
 	// read back etag + size via HEAD. HEAD requires oss:GetObject permission, so
 	// assume a separate GetObject-scoped credential rather than reusing the PutObject one.
-	size, etag, herr := c.headAfterUpload(key)
+	size, etag, herr := c.headAfterUpload(ctx, key)
 	if herr != nil {
 		size = int64(len(data))
 		etag = ""
@@ -193,8 +210,14 @@ func (c *Client) Upload(ctx context.Context, key string, data []byte, contentTyp
 
 // ResolvePrivate generates a short-lived presigned GET URL for a private object.
 func (c *Client) ResolvePrivate(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	creds, err := c.assumeObjectRole("oss:GetObject", key)
 	if err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	ossClient, err := newOSSClient(c.ossEndpoint(), creds.ak, creds.sk, creds.token, c.ossClientOptions...)
@@ -222,8 +245,14 @@ func (c *Client) PublicURL(key string) string {
 
 // Stat reports object metadata. exists is false (not an error) when absent.
 func (c *Client) Stat(ctx context.Context, key string) (exists bool, size int64, contentType, etag string, err error) {
+	if err := ctx.Err(); err != nil {
+		return false, 0, "", "", err
+	}
 	creds, err := c.assumeObjectRole("oss:GetObject", key)
 	if err != nil {
+		return false, 0, "", "", err
+	}
+	if err := ctx.Err(); err != nil {
 		return false, 0, "", "", err
 	}
 	ossClient, err := newOSSClient(c.ossEndpoint(), creds.ak, creds.sk, creds.token, c.ossClientOptions...)
@@ -234,7 +263,7 @@ func (c *Client) Stat(ctx context.Context, key string) (exists bool, size int64,
 	if err != nil {
 		return false, 0, "", "", err
 	}
-	headers, err := bucket.GetObjectDetailedMeta(key)
+	headers, err := bucket.GetObjectDetailedMeta(key, oss.WithContext(ctx))
 	if err != nil {
 		if isNotFound(err) {
 			return false, 0, "", "", nil
@@ -246,9 +275,15 @@ func (c *Client) Stat(ctx context.Context, key string) (exists bool, size int64,
 }
 
 // headAfterUpload assumes GetObject-scoped creds and reads back size + etag.
-func (c *Client) headAfterUpload(key string) (int64, string, error) {
+func (c *Client) headAfterUpload(ctx context.Context, key string) (int64, string, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, "", err
+	}
 	creds, err := c.assumeObjectRole("oss:GetObject", key)
 	if err != nil {
+		return 0, "", err
+	}
+	if err := ctx.Err(); err != nil {
 		return 0, "", err
 	}
 	ossClient, err := newOSSClient(c.ossEndpoint(), creds.ak, creds.sk, creds.token, c.ossClientOptions...)
@@ -259,7 +294,7 @@ func (c *Client) headAfterUpload(key string) (int64, string, error) {
 	if err != nil {
 		return 0, "", err
 	}
-	headers, err := bucket.GetObjectMeta(key)
+	headers, err := bucket.GetObjectMeta(key, oss.WithContext(ctx))
 	if err != nil {
 		return 0, "", err
 	}
@@ -303,6 +338,9 @@ func (c *Client) List(ctx context.Context, prefix, cursor string, limit int) (Li
 	if err != nil {
 		return ListResult{}, newOperationError(ErrorSTS, err)
 	}
+	if err := ctx.Err(); err != nil {
+		return ListResult{}, newOperationError(ErrorList, err)
+	}
 	ossClient, err := newOSSClient(c.ossEndpoint(), creds.ak, creds.sk, creds.token, c.ossClientOptions...)
 	if err != nil {
 		return ListResult{}, newOperationError(ErrorList, err)
@@ -319,7 +357,7 @@ func (c *Client) List(ctx context.Context, prefix, cursor string, limit int) (Li
 	if err != nil {
 		return ListResult{}, classifyListError(err)
 	}
-	if len(page.Objects) > limit || page.Prefix != prefix || page.ContinuationToken != cursor {
+	if len(page.Objects) > limit || page.Prefix != prefix || !echoedCursorMatches(page.ContinuationToken, cursor) {
 		return ListResult{}, newOperationError(ErrorInvalidResponse, nil)
 	}
 
@@ -349,6 +387,14 @@ func (c *Client) List(ctx context.Context, prefix, cursor string, limit int) (Li
 	return ListResult{Objects: objects, NextCursor: nextCursor}, nil
 }
 
+func echoedCursorMatches(echoed, cursor string) bool {
+	if echoed == cursor {
+		return true
+	}
+	decoded, err := url.QueryUnescape(echoed)
+	return err == nil && decoded == cursor
+}
+
 func classifyListError(err error) error {
 	var serviceErr oss.ServiceError
 	var transportErr *url.Error
@@ -372,6 +418,9 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 	creds, err := c.assumeObjectRole("oss:DeleteObject", key)
 	if err != nil {
 		return newOperationError(ErrorSTS, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return newOperationError(ErrorDelete, err)
 	}
 	ossClient, err := newOSSClient(c.ossEndpoint(), creds.ak, creds.sk, creds.token, c.ossClientOptions...)
 	if err != nil {

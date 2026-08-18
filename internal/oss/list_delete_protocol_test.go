@@ -160,6 +160,33 @@ func TestListUsesRealSTSAndOSSSDKProtocol(t *testing.T) {
 	}
 }
 
+func TestListAcceptsURLDecodedEchoOfOpaqueCursor(t *testing.T) {
+	tests := []struct {
+		name   string
+		cursor string
+		echo   string
+	}{
+		{name: "plus", cursor: "opaque+token", echo: "opaque%2Btoken"},
+		{name: "percent", cursor: "opaque%token", echo: "opaque%25token"},
+		{name: "unicode", cursor: "游标-token", echo: "%E6%B8%B8%E6%A0%87-token"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, _ := newProtocolTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				if got := request.URL.Query().Get("continuation-token"); got != tt.cursor {
+					t.Errorf("continuation-token = %q", got)
+				}
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprintf(w, `<ListBucketResult><Prefix>media/</Prefix><ContinuationToken>%s</ContinuationToken><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated></ListBucketResult>`, tt.echo)
+			}))
+
+			if _, err := client.List(context.Background(), "media/", tt.cursor, 1); err != nil {
+				t.Fatalf("List: %v", err)
+			}
+		})
+	}
+}
+
 func TestDeleteUsesRealSTSAndOSSSDKProtocolIdempotently(t *testing.T) {
 	client, recorder := newProtocolTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodDelete {
@@ -334,17 +361,30 @@ func TestListDeleteRejectInvalidLibraryInputsBeforeNetwork(t *testing.T) {
 	}
 }
 
-func TestListAndDeleteHonorCanceledContextBeforeNetwork(t *testing.T) {
-	client, _ := newProtocolTestClient(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+func TestOSSOperationsHonorCanceledContextBeforeNetwork(t *testing.T) {
+	client, recorder := newProtocolTestClient(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Fatal("OSS must not be called for canceled context")
 	}))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
+	if _, err := client.Upload(ctx, "media/example.jpg", []byte("fixture"), "text/plain", true); !errors.Is(err, context.Canceled) {
+		t.Fatalf("upload error = %v", err)
+	}
+	if _, err := client.ResolvePrivate(ctx, "media/example.jpg", time.Minute); !errors.Is(err, context.Canceled) {
+		t.Fatalf("resolve error = %v", err)
+	}
+	if _, _, _, _, err := client.Stat(ctx, "media/example.jpg"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("stat error = %v", err)
+	}
 	if _, err := client.List(ctx, "media/", "", 1); err == nil || err.Error() != ErrorList {
 		t.Fatalf("list error = %v", err)
 	}
 	if err := client.Delete(ctx, "media/example.jpg"); err == nil || err.Error() != ErrorDelete {
 		t.Fatalf("delete error = %v", err)
+	}
+	policies, requests := recorder.snapshot()
+	if len(policies) != 0 || len(requests) != 0 {
+		t.Fatalf("canceled operations reached network: policies=%d requests=%d", len(policies), len(requests))
 	}
 }
 
@@ -408,6 +448,199 @@ func TestListAndDeleteCancelInFlightOSSRequests(t *testing.T) {
 				t.Fatal("OSS HTTP request did not observe context cancellation")
 			}
 		})
+	}
+}
+
+func TestUploadAndStatCancelInFlightOSSRequests(t *testing.T) {
+	tests := []struct {
+		name                 string
+		observeServerContext bool
+		call                 func(context.Context, *Client) error
+	}{
+		{
+			name: "upload",
+			call: func(ctx context.Context, client *Client) error {
+				_, err := client.Upload(ctx, "media/example.jpg", []byte("fixture"), "text/plain", true)
+				return err
+			},
+		},
+		{
+			name:                 "stat",
+			observeServerContext: true,
+			call: func(ctx context.Context, client *Client) error {
+				_, _, _, _, err := client.Stat(ctx, "media/example.jpg")
+				return err
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			started := make(chan struct{})
+			requestCanceled := make(chan struct{})
+			client, _ := newProtocolTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				close(started)
+				select {
+				case <-request.Context().Done():
+					close(requestCanceled)
+				case <-time.After(time.Second):
+					http.Error(w, "request was not canceled", http.StatusGatewayTimeout)
+				}
+			}))
+			ctx, cancel := context.WithCancel(context.Background())
+			errCh := make(chan error, 1)
+			go func() { errCh <- tt.call(ctx, client) }()
+			select {
+			case <-started:
+			case err := <-errCh:
+				t.Fatalf("operation ended before OSS request started: %v", err)
+			case <-time.After(time.Second):
+				t.Fatal("OSS request did not start")
+			}
+			cancel()
+			select {
+			case err := <-errCh:
+				if err == nil {
+					t.Fatal("operation unexpectedly succeeded")
+				}
+			case <-time.After(250 * time.Millisecond):
+				t.Fatal("operation did not stop after context cancellation")
+			}
+			if tt.observeServerContext {
+				select {
+				case <-requestCanceled:
+				case <-time.After(250 * time.Millisecond):
+					t.Fatal("OSS HTTP request did not observe context cancellation")
+				}
+			}
+		})
+	}
+}
+
+func TestUploadCancelsMetadataReadWithoutHidingCommittedUpload(t *testing.T) {
+	metadataStarted := make(chan struct{})
+	requestCanceled := make(chan struct{})
+	client, _ := newProtocolTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodPut {
+			w.Header().Set("ETag", `"put-etag"`)
+			return
+		}
+		if request.Method != http.MethodHead {
+			t.Fatalf("method = %s", request.Method)
+		}
+		close(metadataStarted)
+		select {
+		case <-request.Context().Done():
+			close(requestCanceled)
+		case <-time.After(time.Second):
+			http.Error(w, "request was not canceled", http.StatusGatewayTimeout)
+		}
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	type uploadOutcome struct {
+		result UploadResult
+		err    error
+	}
+	outcomeCh := make(chan uploadOutcome, 1)
+	go func() {
+		result, err := client.Upload(ctx, "media/example.jpg", []byte("fixture"), "text/plain", true)
+		outcomeCh <- uploadOutcome{result: result, err: err}
+	}()
+	select {
+	case <-metadataStarted:
+	case <-time.After(time.Second):
+		t.Fatal("metadata request did not start")
+	}
+	cancel()
+	select {
+	case outcome := <-outcomeCh:
+		if outcome.err != nil {
+			t.Fatalf("committed upload returned error: %v", outcome.err)
+		}
+		if outcome.result.Size != int64(len("fixture")) {
+			t.Fatalf("fallback size = %d", outcome.result.Size)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("upload did not stop after metadata context cancellation")
+	}
+	select {
+	case <-requestCanceled:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("metadata HTTP request did not observe context cancellation")
+	}
+}
+
+func TestNewClientConfiguresBoundedSTSTimeouts(t *testing.T) {
+	client, err := NewClient(profile.Profile{
+		Name:            "timeout-test",
+		Bucket:          "component-bucket",
+		Region:          "cn-test",
+		RoleArn:         "acs:ram::123:role/test",
+		AccessKeyID:     "TEST_ACCESS_KEY",
+		AccessKeySecret: "TEST_ACCESS_SECRET",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.stsClient.ConnectTimeout == nil || *client.stsClient.ConnectTimeout != 5_000 {
+		t.Fatalf("STS connect timeout = %v", client.stsClient.ConnectTimeout)
+	}
+	if client.stsClient.ReadTimeout == nil || *client.stsClient.ReadTimeout != 15_000 {
+		t.Fatalf("STS read timeout = %v", client.stsClient.ReadTimeout)
+	}
+}
+
+func TestSTSReadTimeoutBoundsBlockedEndpoint(t *testing.T) {
+	started := make(chan struct{})
+	requestCanceled := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		close(started)
+		<-requestCanceled
+	}))
+	t.Cleanup(server.Close)
+
+	serverURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	protocol := "HTTP"
+	region := "cn-test"
+	ak, sk := "TEST_ACCESS_KEY", "TEST_ACCESS_SECRET"
+	connectTimeout, readTimeout := 50, 50
+	endpoint := serverURL.Host
+	stsClient, err := sts.NewClient(&openapi.Config{
+		AccessKeyId:     &ak,
+		AccessKeySecret: &sk,
+		RegionId:        &region,
+		Endpoint:        &endpoint,
+		Protocol:        &protocol,
+		ConnectTimeout:  &connectTimeout,
+		ReadTimeout:     &readTimeout,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &Client{
+		prof: profile.Profile{
+			Bucket:  "component-bucket",
+			Region:  region,
+			RoleArn: "acs:ram::123:role/test",
+		},
+		stsClient: stsClient,
+	}
+
+	start := time.Now()
+	_, err = client.List(context.Background(), "media/", "", 1)
+	close(requestCanceled)
+	if err == nil || err.Error() != ErrorSTS {
+		t.Fatalf("error = %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("STS timeout took %s", elapsed)
+	}
+	select {
+	case <-started:
+	default:
+		t.Fatal("STS endpoint was not reached")
 	}
 }
 
