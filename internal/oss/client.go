@@ -281,21 +281,23 @@ type ListResult struct {
 	NextCursor *string         `json:"nextCursor"`
 }
 
-// List returns one ListObjectsV2 page under an exact prefix.
+// List returns one ListObjectsV2 page under an exact prefix. The context
+// cancels the OSS request after temporary credentials are obtained; the STS
+// SDK does not accept a context, so its in-flight call remains timeout-bound.
 func (c *Client) List(ctx context.Context, prefix, cursor string, limit int) (ListResult, error) {
 	if err := ctx.Err(); err != nil {
 		return ListResult{}, newOperationError(ErrorList, err)
 	}
 	if err := media.ValidateObjectInput(prefix); err != nil {
-		return ListResult{}, newOperationError(ErrorInvalidResponse, err)
+		return ListResult{}, newOperationError(ErrorInvalidArgument, err)
 	}
 	if cursor != "" {
 		if err := media.ValidateCursor(cursor); err != nil {
-			return ListResult{}, newOperationError(ErrorInvalidResponse, err)
+			return ListResult{}, newOperationError(ErrorInvalidArgument, err)
 		}
 	}
 	if err := media.ValidateLimit(limit); err != nil {
-		return ListResult{}, newOperationError(ErrorInvalidResponse, err)
+		return ListResult{}, newOperationError(ErrorInvalidArgument, err)
 	}
 	creds, err := c.assumeListRole(prefix)
 	if err != nil {
@@ -309,7 +311,7 @@ func (c *Client) List(ctx context.Context, prefix, cursor string, limit int) (Li
 	if err != nil {
 		return ListResult{}, newOperationError(ErrorList, err)
 	}
-	options := []oss.Option{oss.Prefix(prefix), oss.MaxKeys(limit)}
+	options := []oss.Option{oss.Prefix(prefix), oss.MaxKeys(limit), oss.WithContext(ctx)}
 	if cursor != "" {
 		options = append(options, oss.ContinuationToken(cursor))
 	}
@@ -317,7 +319,7 @@ func (c *Client) List(ctx context.Context, prefix, cursor string, limit int) (Li
 	if err != nil {
 		return ListResult{}, classifyListError(err)
 	}
-	if len(page.Objects) > limit || page.Prefix != prefix {
+	if len(page.Objects) > limit || page.Prefix != prefix || page.ContinuationToken != cursor {
 		return ListResult{}, newOperationError(ErrorInvalidResponse, nil)
 	}
 
@@ -356,10 +358,16 @@ func classifyListError(err error) error {
 	return newOperationError(ErrorInvalidResponse, err)
 }
 
-// Delete idempotently ensures that the current object is absent.
+// Delete idempotently makes the object absent from the current read view. The
+// context cancels the OSS request after temporary credentials are obtained;
+// the STS SDK does not accept a context, so its in-flight call remains
+// timeout-bound. Versioned buckets may retain historical versions and markers.
 func (c *Client) Delete(ctx context.Context, key string) error {
 	if err := ctx.Err(); err != nil {
 		return newOperationError(ErrorDelete, err)
+	}
+	if err := media.ValidateObjectInput(key); err != nil {
+		return newOperationError(ErrorInvalidArgument, err)
 	}
 	creds, err := c.assumeObjectRole("oss:DeleteObject", key)
 	if err != nil {
@@ -373,7 +381,7 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 	if err != nil {
 		return newOperationError(ErrorDelete, err)
 	}
-	if err := bucket.DeleteObject(key); err != nil {
+	if err := bucket.DeleteObject(key, oss.WithContext(ctx)); err != nil {
 		return newOperationError(ErrorDelete, err)
 	}
 	return nil

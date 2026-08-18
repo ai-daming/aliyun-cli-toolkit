@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	openapi "github.com/alibabacloud-go/darabonba-openapi/client"
 	sts "github.com/alibabacloud-go/sts-20150401/client"
@@ -196,15 +197,15 @@ func TestListRejectsInvalidProviderResponseFailClosed(t *testing.T) {
 	}{
 		{
 			name: "outside prefix",
-			xml:  `<ListBucketResult><Prefix>media/</Prefix><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated><Contents><Key>other/file</Key><LastModified>2026-08-18T10:00:00Z</LastModified><ETag>etag</ETag><Size>1</Size></Contents></ListBucketResult>`,
+			xml:  `<ListBucketResult><Prefix>media/</Prefix><ContinuationToken>cursor-1</ContinuationToken><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated><Contents><Key>other/file</Key><LastModified>2026-08-18T10:00:00Z</LastModified><ETag>etag</ETag><Size>1</Size></Contents></ListBucketResult>`,
 		},
 		{
 			name: "negative size",
-			xml:  `<ListBucketResult><Prefix>media/</Prefix><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated><Contents><Key>media/file</Key><LastModified>2026-08-18T10:00:00Z</LastModified><ETag>etag</ETag><Size>-1</Size></Contents></ListBucketResult>`,
+			xml:  `<ListBucketResult><Prefix>media/</Prefix><ContinuationToken>cursor-1</ContinuationToken><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated><Contents><Key>media/file</Key><LastModified>2026-08-18T10:00:00Z</LastModified><ETag>etag</ETag><Size>-1</Size></Contents></ListBucketResult>`,
 		},
 		{
 			name: "missing next cursor",
-			xml:  `<ListBucketResult><Prefix>media/</Prefix><MaxKeys>1</MaxKeys><IsTruncated>true</IsTruncated></ListBucketResult>`,
+			xml:  `<ListBucketResult><Prefix>media/</Prefix><ContinuationToken>cursor-1</ContinuationToken><MaxKeys>1</MaxKeys><IsTruncated>true</IsTruncated></ListBucketResult>`,
 		},
 		{
 			name: "repeated cursor",
@@ -212,15 +213,23 @@ func TestListRejectsInvalidProviderResponseFailClosed(t *testing.T) {
 		},
 		{
 			name: "missing echoed prefix",
-			xml:  `<ListBucketResult><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated></ListBucketResult>`,
+			xml:  `<ListBucketResult><ContinuationToken>cursor-1</ContinuationToken><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated></ListBucketResult>`,
 		},
 		{
 			name: "overlong next cursor",
-			xml:  `<ListBucketResult><Prefix>media/</Prefix><MaxKeys>1</MaxKeys><IsTruncated>true</IsTruncated><NextContinuationToken>` + strings.Repeat("x", 4097) + `</NextContinuationToken></ListBucketResult>`,
+			xml:  `<ListBucketResult><Prefix>media/</Prefix><ContinuationToken>cursor-1</ContinuationToken><MaxKeys>1</MaxKeys><IsTruncated>true</IsTruncated><NextContinuationToken>` + strings.Repeat("x", 4097) + `</NextContinuationToken></ListBucketResult>`,
 		},
 		{
 			name: "too many objects",
-			xml:  `<ListBucketResult><Prefix>media/</Prefix><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated><Contents><Key>media/one</Key><LastModified>2026-08-18T10:00:00Z</LastModified><ETag>one</ETag><Size>1</Size></Contents><Contents><Key>media/two</Key><LastModified>2026-08-18T10:00:00Z</LastModified><ETag>two</ETag><Size>1</Size></Contents></ListBucketResult>`,
+			xml:  `<ListBucketResult><Prefix>media/</Prefix><ContinuationToken>cursor-1</ContinuationToken><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated><Contents><Key>media/one</Key><LastModified>2026-08-18T10:00:00Z</LastModified><ETag>one</ETag><Size>1</Size></Contents><Contents><Key>media/two</Key><LastModified>2026-08-18T10:00:00Z</LastModified><ETag>two</ETag><Size>1</Size></Contents></ListBucketResult>`,
+		},
+		{
+			name: "missing echoed cursor",
+			xml:  `<ListBucketResult><Prefix>media/</Prefix><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated></ListBucketResult>`,
+		},
+		{
+			name: "wrong echoed cursor",
+			xml:  `<ListBucketResult><Prefix>media/</Prefix><ContinuationToken>other-cursor</ContinuationToken><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated></ListBucketResult>`,
 		},
 		{
 			name: "malformed XML",
@@ -294,8 +303,8 @@ func TestListRejectsIncompleteSTSCredentialsWithoutPanicOrLeak(t *testing.T) {
 	}
 }
 
-func TestListRejectsInvalidLibraryInputsBeforeNetwork(t *testing.T) {
-	client, _ := newProtocolTestClient(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+func TestListDeleteRejectInvalidLibraryInputsBeforeNetwork(t *testing.T) {
+	client, recorder := newProtocolTestClient(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Fatal("OSS must not be called for invalid list inputs")
 	}))
 	for _, tt := range []struct {
@@ -311,10 +320,17 @@ func TestListRejectsInvalidLibraryInputsBeforeNetwork(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := client.List(context.Background(), tt.prefix, tt.cursor, tt.limit)
-			if err == nil || err.Error() != ErrorInvalidResponse {
+			if err == nil || err.Error() != ErrorInvalidArgument {
 				t.Fatalf("error = %v", err)
 			}
 		})
+	}
+	if err := client.Delete(context.Background(), "media/../secret"); err == nil || err.Error() != ErrorInvalidArgument {
+		t.Fatalf("delete error = %v", err)
+	}
+	policies, requests := recorder.snapshot()
+	if len(policies) != 0 || len(requests) != 0 {
+		t.Fatalf("invalid inputs reached network: policies=%d requests=%d", len(policies), len(requests))
 	}
 }
 
@@ -329,6 +345,69 @@ func TestListAndDeleteHonorCanceledContextBeforeNetwork(t *testing.T) {
 	}
 	if err := client.Delete(ctx, "media/example.jpg"); err == nil || err.Error() != ErrorDelete {
 		t.Fatalf("delete error = %v", err)
+	}
+}
+
+func TestListAndDeleteCancelInFlightOSSRequests(t *testing.T) {
+	tests := []struct {
+		name     string
+		wantCode string
+		call     func(context.Context, *Client) error
+	}{
+		{
+			name:     "list",
+			wantCode: ErrorList,
+			call: func(ctx context.Context, client *Client) error {
+				_, err := client.List(ctx, "media/", "", 1)
+				return err
+			},
+		},
+		{
+			name:     "delete",
+			wantCode: ErrorDelete,
+			call: func(ctx context.Context, client *Client) error {
+				return client.Delete(ctx, "media/example.jpg")
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			started := make(chan struct{})
+			requestCanceled := make(chan struct{})
+			client, _ := newProtocolTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				close(started)
+				select {
+				case <-request.Context().Done():
+					close(requestCanceled)
+				case <-time.After(time.Second):
+					http.Error(w, "request was not canceled", http.StatusGatewayTimeout)
+				}
+			}))
+			ctx, cancel := context.WithCancel(context.Background())
+			errCh := make(chan error, 1)
+			go func() { errCh <- tt.call(ctx, client) }()
+			select {
+			case <-started:
+			case err := <-errCh:
+				t.Fatalf("operation ended before OSS request started: %v", err)
+			case <-time.After(time.Second):
+				t.Fatal("OSS request did not start")
+			}
+			cancel()
+			select {
+			case err := <-errCh:
+				if err == nil || err.Error() != tt.wantCode {
+					t.Fatalf("error = %v", err)
+				}
+			case <-time.After(250 * time.Millisecond):
+				t.Fatal("operation did not stop after context cancellation")
+			}
+			select {
+			case <-requestCanceled:
+			case <-time.After(250 * time.Millisecond):
+				t.Fatal("OSS HTTP request did not observe context cancellation")
+			}
+		})
 	}
 }
 

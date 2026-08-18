@@ -3,6 +3,7 @@ package oss
 import "errors"
 
 const (
+	ErrorInvalidArgument = "INVALID_ARGUMENT"
 	ErrorSTS             = "STS_ERROR"
 	ErrorList            = "OSS_LIST_ERROR"
 	ErrorDelete          = "OSS_DELETE_ERROR"

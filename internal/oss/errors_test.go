@@ -14,3 +14,9 @@ func TestErrorCodeRecognizesOnlyOperationErrors(t *testing.T) {
 		t.Fatalf("ordinary ErrorCode = %q, %v", code, ok)
 	}
 }
+
+func TestInvalidArgumentCodeIsStable(t *testing.T) {
+	if ErrorInvalidArgument != "INVALID_ARGUMENT" {
+		t.Fatalf("ErrorInvalidArgument = %q", ErrorInvalidArgument)
+	}
+}

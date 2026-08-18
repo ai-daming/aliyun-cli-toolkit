@@ -10,9 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `aliyun-media-cli list`：按精确 prefix 使用 ListObjectsV2 分页返回对象元数据和不透明 `nextCursor`
 - `aliyun-media-cli delete`：以稳定 JSON 结果幂等删除单个精确 object key
+- GitHub Actions 最小质量门禁：test、vet 和双 CLI build
 
 ### Changed
 - upload/resolve/stat/list/delete 共用保守的 object key 输入安全子集
+- list/delete 的库层非法输入统一返回 `INVALID_ARGUMENT`
+- list/delete 在 STS 返回后将调用方 context 接入 OSS HTTP 请求；STS 在途调用仍受 SDK timeout 约束
 
 ### Fixed
 - `stat` 改用 OSS 详细元数据接口，确保已设置的 `Content-Type` 能按契约返回
@@ -21,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - list 的 STS policy 仅允许目标 bucket 的 `oss:ListObjects`，并以 `StringEquals oss:Prefix` 收敛到本次 prefix
 - delete 的 STS policy 仅允许目标 key 的 `oss:DeleteObject`；policy 使用结构化 JSON 序列化
 - list/delete 将 SDK、HTTP 与云端响应错误收敛为稳定错误码，异常响应 fail closed
+- list 对服务端回显的 continuation token 做一致性校验
 
 ## [0.1.0] - 2026-08-08
 
