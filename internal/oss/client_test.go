@@ -269,30 +269,13 @@ func TestUploadToInaccessibleBucket(t *testing.T) {
 	}
 }
 
-// TestOperationsFailWithInvalidBucketName exercises the ossClient.Bucket and
-// downstream error branches by using an invalid bucket name (uppercase),
-// which the OSS SDK rejects client-side. This covers the defensive error
-// returns in ResolvePrivate/Stat/Delete without needing network failures.
+// TestOperationsFailWithInvalidBucketName proves invalid profile state is
+// rejected before STS or OSS receives a request.
 func TestOperationsFailWithInvalidBucketName(t *testing.T) {
 	p := testProfile(t)
 	bad := p
 	bad.Bucket = "INVALID-UPPERCASE-Bucket" // OSS rejects uppercase in bucket names
-	c, err := NewClient(bad)
-	if err != nil {
-		t.Fatal(err)
-	}
-	key := uniqueKey("invalid-bkt")
-
-	if _, err := c.Upload(context.Background(), key, []byte("x"), "text/plain", false); err == nil {
-		t.Error("Upload should fail with invalid bucket name")
-	}
-	if _, err := c.ResolvePrivate(context.Background(), key, 5*time.Second); err == nil {
-		t.Error("ResolvePrivate should fail with invalid bucket name")
-	}
-	if _, _, _, _, err := c.Stat(context.Background(), key); err == nil {
-		t.Error("Stat should fail with invalid bucket name")
-	}
-	if err := c.Delete(context.Background(), key); err == nil {
-		t.Error("Delete should fail with invalid bucket name")
+	if _, err := NewClient(bad); err == nil {
+		t.Fatal("NewClient should reject invalid bucket name")
 	}
 }

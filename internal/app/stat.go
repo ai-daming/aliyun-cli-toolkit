@@ -1,8 +1,6 @@
 package app
 
 import (
-	"context"
-
 	"github.com/spf13/cobra"
 
 	"github.com/mamamate/aliyun-cli-toolkit/internal/oss"
@@ -16,7 +14,15 @@ func newStatCmd() *cobra.Command {
 		Use:   "stat",
 		Short: "Report object metadata (exists/size/content-type/etag)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			p, err := profile.Load(profileName)
+			validatedProfile, err := validateProfileName(profileName)
+			if err != nil {
+				return err
+			}
+			validatedKey, err := validateObjectKey(key)
+			if err != nil {
+				return err
+			}
+			p, err := profile.Load(validatedProfile)
 			if err != nil {
 				return err
 			}
@@ -24,7 +30,7 @@ func newStatCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			exists, size, ct, etag, err := c.Stat(context.Background(), key)
+			exists, size, ct, etag, err := c.Stat(cmd.Context(), validatedKey)
 			if err != nil {
 				return err
 			}

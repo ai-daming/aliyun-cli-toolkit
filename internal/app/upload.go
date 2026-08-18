@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -20,7 +19,15 @@ func newUploadCmd() *cobra.Command {
 		Use:   "upload",
 		Short: "Upload a file to OSS and return key + url + etag",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			p, err := profile.Load(profileName)
+			validatedProfile, err := validateProfileName(profileName)
+			if err != nil {
+				return err
+			}
+			validatedKey, err := validateObjectKey(key)
+			if err != nil {
+				return err
+			}
+			p, err := profile.Load(validatedProfile)
 			if err != nil {
 				return err
 			}
@@ -32,7 +39,7 @@ func newUploadCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := c.Upload(context.Background(), key, data, contentType, private)
+			res, err := c.Upload(cmd.Context(), validatedKey, data, contentType, private)
 			if err != nil {
 				return err
 			}
