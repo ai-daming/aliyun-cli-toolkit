@@ -1,7 +1,7 @@
 # aliyun-cli-toolkit — 设计文档
 
-> 状态：草案 / 待评审
-> 日期：2026-08-08
+> 状态：v0.x 实现契约
+> 更新：2026-08-18
 
 ## 一句话
 
@@ -34,7 +34,7 @@ Mamamate（一个月嫂/妈妈服务平台）的 Java server 现在把阿里云 
 | | `aliyun-media-cli` | `aliyun-idcard-cli` |
 |---|---|---|
 | 绑定 | 阿里云 OSS | 阿里云 CloudAuth / OCR |
-| 能力 | upload / resolve / stat | verify（OCR + 二要素一体化） |
+| 能力 | upload / resolve / stat / list / delete | verify（OCR + 二要素一体化） |
 | 凭证 | OSS AK/SK + roleArn（运行时 AssumeRole） | CloudAuth AK/SK（独立一套） |
 | 依赖 | 无 | 无（只吃 URL，不依赖 media-cli） |
 
@@ -163,6 +163,59 @@ aliyun-media-cli stat --profile mamamate --key some/key
 {"exists": false}
 ```
 
+### 子命令：list
+
+按调用方提供的**精确非空 prefix**读取一页对象元数据。它是基础 OSS 能力，不理解 Mamamate 的表、租户、附件类型或清理规则。
+
+```bash
+aliyun-media-cli list \
+  --profile production \
+  --prefix media/2026- \
+  --limit 100 \
+  [--cursor '<上一页 nextCursor>']
+```
+
+```json
+{
+  "objects": [
+    {
+      "key": "media/2026-08/photo.jpg",
+      "lastModified": "2026-08-18T10:00:00Z",
+      "size": 234567,
+      "etag": "d41d8cd98f00b204e9800998ecf8427e"
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+- 使用 OSS `ListObjectsV2`；`limit` 为 1–1000。
+- `cursor` 是不透明值，调用方只能原样回传；最长 4096 字节。
+- `nextCursor: null` 表示遍历结束。一次跨页遍历不是快照：遍历期间并发写删可能造成重复或遗漏，调用方需要按 key 去重并允许重扫。
+- 每次 AssumeRole 仅授予目标 bucket 的 `oss:ListObjects`，并用 `StringEquals` 将 `oss:Prefix` 收敛到本次 prefix。
+
+### 子命令：delete
+
+幂等删除一个**精确 key**，不接受 prefix、通配符或批量语义。
+
+```bash
+aliyun-media-cli delete --profile production --key media/2026-08/photo.jpg
+```
+
+```json
+{"key":"media/2026-08/photo.jpg","deleted":true}
+```
+
+- OSS DeleteObject 对不存在对象同样视为成功，因此成功输出不会出现 `deleted:false`，也不会先做 HEAD/STAT。
+- 每次 AssumeRole 只授予该 key 的 `oss:DeleteObject`。
+- 对开启版本控制的 bucket，本命令只保证当前读取视图不可见，不清理历史 version 或 delete marker。
+
+### list/delete 输入与错误边界
+
+key/prefix 必须是 1–1023 字节的 UTF-8，不能以 `/` 或 `-` 开头，不能包含 ASCII 控制字符、`*`、`?`，路径段不能是 `.` 或 `..`。prefix 不要求以 `/` 结尾。这是一套 CLI 自己拥有的保守安全子集，不是某个业务消费者的命名规则。
+
+失败只返回稳定错误码：`INVALID_ARGUMENT`、`PROFILE_ERROR`、`STS_ERROR`、`OSS_LIST_ERROR`、`OSS_DELETE_ERROR`、`INVALID_OSS_RESPONSE`、`OUTPUT_ERROR`。SDK、HTTP 或云端响应原文不进入公开错误链。
+
 ## `aliyun-idcard-cli` 契约
 
 ### profile 管理
@@ -280,5 +333,5 @@ aliyun-cli-toolkit/
 ## 待定 / 实现阶段再决
 
 - `resolve` 对不存在的 key 的行为（报错 vs 返回 exists:false）——倾向报错 + 非零退出码，因为 resolve 的语义是"给我这个对象的 URL"，对象不存在是异常。
-- 是否需要 `cp`（对象复制）、`rm`（对象删除）、`ls`（列举）子命令——先不做，YAGNI。
+- 是否需要 `cp`（对象复制）或批量删除——当前不做；`list` 与单 key 幂等 `delete` 已按独立组件契约提供。
 - STS 凭证在单次 CLI 进程内的复用（一个进程内多次操作可共享一次 AssumeRole 的结果）——实现细节，不暴露给外部。

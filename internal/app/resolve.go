@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -21,7 +20,15 @@ func newResolveCmd() *cobra.Command {
 		Use:   "resolve",
 		Short: "Resolve an object key to a readable URL",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			p, err := profile.Load(profileName)
+			validatedProfile, err := validateProfileName(profileName)
+			if err != nil {
+				return err
+			}
+			validatedKey, err := validateObjectKey(key)
+			if err != nil {
+				return err
+			}
+			p, err := profile.Load(validatedProfile)
 			if err != nil {
 				return err
 			}
@@ -31,7 +38,7 @@ func newResolveCmd() *cobra.Command {
 			}
 			if isPublic {
 				return output.PrintJSON(cmd.OutOrStdout(), map[string]any{
-					"url":        c.PublicURL(key),
+					"url":        c.PublicURL(validatedKey),
 					"visibility": "public",
 				})
 			}
@@ -39,7 +46,7 @@ func newResolveCmd() *cobra.Command {
 			if d == 0 {
 				d = 15 * time.Minute
 			}
-			url, err := c.ResolvePrivate(context.Background(), key, d)
+			url, err := c.ResolvePrivate(cmd.Context(), validatedKey, d)
 			if err != nil {
 				return err
 			}

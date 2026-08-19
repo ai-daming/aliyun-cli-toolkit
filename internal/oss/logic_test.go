@@ -24,6 +24,36 @@ func TestNewClientRequiresRegion(t *testing.T) {
 	}
 }
 
+func TestNewClientRejectsIncompleteOrUnsafeProfile(t *testing.T) {
+	base := profile.Profile{
+		Name:            "component",
+		Bucket:          "component-bucket",
+		Region:          "cn-test",
+		RoleArn:         "acs:ram::123:role/test",
+		AccessKeyID:     "TEST_ACCESS_KEY",
+		AccessKeySecret: "TEST_ACCESS_SECRET",
+	}
+	tests := []struct {
+		name   string
+		mutate func(*profile.Profile)
+	}{
+		{name: "unsafe bucket", mutate: func(p *profile.Profile) { p.Bucket = "bucket*" }},
+		{name: "missing role ARN", mutate: func(p *profile.Profile) { p.RoleArn = "" }},
+		{name: "missing access key ID", mutate: func(p *profile.Profile) { p.AccessKeyID = "" }},
+		{name: "missing access key secret", mutate: func(p *profile.Profile) { p.AccessKeySecret = "" }},
+		{name: "plaintext endpoint", mutate: func(p *profile.Profile) { p.Endpoint = "http://oss.example.test" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := base
+			tt.mutate(&p)
+			if _, err := NewClient(p); err == nil {
+				t.Fatal("NewClient should reject invalid profile")
+			}
+		})
+	}
+}
+
 func TestOssEndpointDefaultsWhenEmpty(t *testing.T) {
 	c := &Client{prof: profile.Profile{Region: "cn-hangzhou"}}
 	if got := c.ossEndpoint(); got != "oss-cn-hangzhou.aliyuncs.com" {

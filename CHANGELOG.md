@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `aliyun-media-cli list`：按精确 prefix 使用 ListObjectsV2 分页返回对象元数据和不透明 `nextCursor`
+- `aliyun-media-cli delete`：以稳定 JSON 结果幂等删除单个精确 object key
+- GitHub Actions 最小质量门禁：test、race、vet 和双 CLI build；第三方 Action 固定到完整 commit SHA
+
+### Changed
+- upload/resolve/stat/list/delete 共用保守的 object key 输入安全子集
+- list/delete 的库层非法输入统一返回 `INVALID_ARGUMENT`
+- 两个 CLI 入口将 SIGINT/SIGTERM 转为 Cobra context；所有 OSS 网络操作均接入调用方 context
+- STS 显式配置 5 秒连接超时和 15 秒读取超时，避免不可达或挂起端点导致命令无界等待
+
+### Fixed
+- `stat` 改用 OSS 详细元数据接口，确保已设置的 `Content-Type` 能按契约返回
+
+### Security
+- list 的 STS policy 仅允许目标 bucket 的 `oss:ListObjects`，并以 `StringEquals oss:Prefix` 收敛到本次 prefix
+- delete 的 STS policy 仅允许目标 key 的 `oss:DeleteObject`；policy 使用结构化 JSON 序列化
+- list/delete 将 SDK、HTTP 与云端响应错误收敛为稳定错误码，异常响应 fail closed
+- list 对服务端回显的 continuation token 做 URL 编码兼容的一致性校验
+
 ## [0.1.0] - 2026-08-08
 
 首发版本。两个无状态的 Go CLI,把阿里云 OSS 资源读写和身份证 OCR+核验从宿主应用里解耦出来。
