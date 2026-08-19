@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-19
+
 ### Added
 - `aliyun-media-cli list`：按精确 prefix 使用 ListObjectsV2 分页返回对象元数据和不透明 `nextCursor`
 - `aliyun-media-cli delete`：以稳定 JSON 结果幂等删除单个精确 object key
@@ -51,5 +53,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 凭证(`profiles.local/*.toml`)、真实测试资源(`test-assets/`)全程 gitignored,仓库只跟踪 `*.example` 模板
 - 强制 HTTPS endpoint,STS token 与私密媒体不走明文
 
-[Unreleased]: https://github.com/ai-daming/aliyun-cli-toolkit/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ai-daming/aliyun-cli-toolkit/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ai-daming/aliyun-cli-toolkit/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ai-daming/aliyun-cli-toolkit/releases/tag/v0.1.0
