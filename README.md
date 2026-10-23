@@ -77,3 +77,5 @@ task test-cover   # 跑测试并报告仓库覆盖率；变更区域门槛 ≥85
 ## License
 
 Apache-2.0,详见 [LICENSE](LICENSE)。
+
+Dedicated private GET links up to seven days: [configuration and boundaries](docs/seven-day-read-signing.md). Existing profiles use STS and support at most one hour.

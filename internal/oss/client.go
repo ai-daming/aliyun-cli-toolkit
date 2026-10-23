@@ -41,7 +41,15 @@ func NewClient(p profile.Profile) (*Client, error) {
 	if err := media.ValidateBucket(p.Bucket); err != nil {
 		return nil, fmt.Errorf("profile %q: valid bucket is required", p.Name)
 	}
-	if strings.TrimSpace(p.RoleArn) == "" {
+	if p.SigningMode != "" && p.SigningMode != "direct-read" {
+		return nil, fmt.Errorf("invalid signing mode")
+	}
+	if p.SigningMode == "direct-read" {
+		if p.RoleArn != "" || media.ValidateObjectInput(p.ReadPrefix) != nil || !strings.HasSuffix(p.ReadPrefix, "/") {
+			return nil, fmt.Errorf("direct-read requires a scoped directory prefix and no role ARN")
+		}
+	}
+	if p.SigningMode == "" && strings.TrimSpace(p.RoleArn) == "" {
 		return nil, fmt.Errorf("profile %q: role ARN is required", p.Name)
 	}
 	if strings.TrimSpace(p.AccessKeyID) == "" {
@@ -91,6 +99,9 @@ type stsCreds struct {
 
 // assumeRole obtains STS temporary credentials scoped by a serialized policy.
 func (c *Client) assumeRole(policy string) (*stsCreds, error) {
+	if c.prof.SigningMode == "direct-read" {
+		return nil, errors.New("direct-read profile only supports private URL signing")
+	}
 	session := "aliyun-media-cli"
 	dur := int64(3600)
 	req := &sts.AssumeRoleRequest{
@@ -210,6 +221,16 @@ func (c *Client) Upload(ctx context.Context, key string, data []byte, contentTyp
 
 // ResolvePrivate generates a short-lived presigned GET URL for a private object.
 func (c *Client) ResolvePrivate(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	if media.ValidateObjectInput(key) != nil || ttl < time.Second || ttl%time.Second != 0 || ttl > 7*24*time.Hour {
+		return "", media.ErrInvalidInput
+	}
+	if c.prof.SigningMode == "direct-read" {
+		return c.resolveDirectRead(ctx, key, ttl)
+	}
+	if ttl > time.Hour {
+		return "", errors.New("STS signed URL cannot outlive its one-hour credentials")
+	}
+
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -445,4 +466,24 @@ func isNotFound(err error) bool {
 		return strings.Contains(code, "NoSuch") || strings.Contains(code, "NotFound")
 	}
 	return strings.Contains(err.Error(), "NoSuchKey") || strings.Contains(err.Error(), "404")
+}
+
+// resolveDirectRead signs locally with a dedicated, prefix-scoped read-only RAM key.
+// Cloud IAM must enforce GetObject-only for this same prefix; config is an extra guard.
+func (c *Client) resolveDirectRead(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(key, c.prof.ReadPrefix) || key == c.prof.ReadPrefix {
+		return "", media.ErrInvalidInput
+	}
+	client, err := newOSSClient(c.ossEndpoint(), c.prof.AccessKeyID, c.prof.AccessKeySecret, "", oss.AuthVersion(oss.AuthV4), oss.Region(c.prof.Region))
+	if err != nil {
+		return "", err
+	}
+	bucket, err := client.Bucket(c.prof.Bucket)
+	if err != nil {
+		return "", err
+	}
+	return bucket.SignURL(key, oss.HTTPGet, int64(ttl.Seconds()))
 }

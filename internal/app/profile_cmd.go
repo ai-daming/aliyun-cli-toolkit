@@ -33,6 +33,8 @@ func newProfileAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&p.Bucket, "bucket", "", "OSS bucket name")
 	cmd.Flags().StringVar(&p.Region, "region", "", "OSS region (e.g. cn-huhehaote)")
 	cmd.Flags().StringVar(&p.Endpoint, "endpoint", "", "OSS endpoint")
+	cmd.Flags().StringVar(&p.SigningMode, "signing-mode", "", "direct-read for dedicated long-lived GET signing; empty uses STS")
+	cmd.Flags().StringVar(&p.ReadPrefix, "read-prefix", "", "Required directory prefix for direct-read signing")
 	cmd.Flags().StringVar(&p.RoleArn, "role-arn", "", "RAM role ARN for STS AssumeRole")
 	cmd.Flags().StringVar(&p.AccessKeyID, "access-key-id", "", "AccessKey ID")
 	cmd.Flags().StringVar(&p.AccessKeySecret, "access-key-secret", "", "AccessKey Secret")
