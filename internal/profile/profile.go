@@ -16,6 +16,8 @@ import (
 
 // Profile holds the credentials and endpoint config for one OSS profile.
 type Profile struct {
+	SigningMode     string `toml:"signing-mode,omitempty" json:"signing-mode,omitempty"`
+	ReadPrefix      string `toml:"read-prefix,omitempty" json:"read-prefix,omitempty"`
 	Name            string `toml:"-" json:"name"`
 	Bucket          string `toml:"bucket" json:"bucket"`
 	Region          string `toml:"region" json:"region"`
