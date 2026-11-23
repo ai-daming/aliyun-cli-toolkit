@@ -17,6 +17,8 @@ func NewRootCmd() *cobra.Command {
 	}
 	root.AddCommand(newProfileCmd())
 	root.AddCommand(newUploadCmd())
+	root.AddCommand(newSignUploadCmd())
+	root.AddCommand(newInspectUploadCmd())
 	root.AddCommand(newResolveCmd())
 	root.AddCommand(newStatCmd())
 	root.AddCommand(newListCmd())

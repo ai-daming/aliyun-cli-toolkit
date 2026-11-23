@@ -25,6 +25,10 @@ type policyCondition struct {
 }
 
 func buildObjectPolicy(bucket, action, objectKey string) (string, error) {
+	return buildScopedObjectPolicy(bucket, action, objectKey, nil)
+}
+
+func buildScopedObjectPolicy(bucket, action, objectKey string, condition *policyCondition) (string, error) {
 	if err := media.ValidateBucket(bucket); err != nil {
 		return "", err
 	}
@@ -35,9 +39,10 @@ func buildObjectPolicy(bucket, action, objectKey string) (string, error) {
 		return "", errors.New("unsupported object policy action")
 	}
 	return encodePolicy(policyStatement{
-		Effect:   "Allow",
-		Action:   []string{action},
-		Resource: []string{fmt.Sprintf("acs:oss:*:*:%s/%s", bucket, objectKey)},
+		Effect:    "Allow",
+		Action:    []string{action},
+		Resource:  []string{fmt.Sprintf("acs:oss:*:*:%s/%s", bucket, objectKey)},
+		Condition: condition,
 	})
 }
 

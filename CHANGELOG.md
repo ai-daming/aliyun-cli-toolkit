@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `aliyun-media-cli sign-upload` 签发短时、单对象的 OSS V4 浏览器直传表单。
+- `aliyun-media-cli inspect-upload` 返回对象元数据和最多 32 字节的文件头，用于宿主确认上传。
+
 ## [0.2.0] - 2026-08-19
 
 ### Added
