@@ -34,7 +34,7 @@ Mamamate（一个月嫂/妈妈服务平台）的 Java server 现在把阿里云 
 | | `aliyun-media-cli` | `aliyun-idcard-cli` |
 |---|---|---|
 | 绑定 | 阿里云 OSS | 阿里云 CloudAuth / OCR |
-| 能力 | upload / resolve / stat / list / delete | verify（OCR + 二要素一体化） |
+| 能力 | upload / sign-upload / inspect-upload / resolve / stat / list / delete | verify（OCR + 二要素一体化） |
 | 凭证 | OSS AK/SK + roleArn（运行时 AssumeRole） | CloudAuth AK/SK（独立一套） |
 | 依赖 | 无 | 无（只吃 URL，不依赖 media-cli） |
 
@@ -54,7 +54,7 @@ idcard-cli 因此可以独立核验**任何来源**的身份证图 URL，不限�
 - **不做跨云抽象。**
 - **不做 Mamamate 业务语义。** 不知道"月嫂"、"租户"、"provider-media-asset"这些概念。key 就是 key，上传就是上传。业务语义留给宿主应用。
 - **不做 key 自动生成。** key 由调用方决定。CLI 可以提供 `--key-prefix` 便利参数，但不替调用方做业务命名决策。
-- **不做 presign-put 和确认（confirm）环节。** Mamamate 现有 presign→PUT→confirm 三步，是因为浏览器直传场景需要。CLI 模型里调用方直接用 `upload` 一步传完；需要查对象是否到位用 `stat`。若将来真有"大文件不想进 CLI 内存"或"浏览器直传"的场景，再补 `presign-put`——届时 `stat` 已经在了，编排自然成立。
+- **业务确认由宿主完成。** 浏览器上传使用 CLI 签发的 POST 表单。CLI 检查对象元数据和文件头，宿主判断是否保存业务引用。
 
 ## `aliyun-media-cli` 契约
 
@@ -117,6 +117,13 @@ stdout（private）——注意 `url` 字段缺省：
 ```
 
 `etag` 字段说明：对应 OSS 对象的 `ETag`。对单次 PUT 的小文件，**ETag = 内容 MD5**，调用方可本地算 MD5 与之比对，做上传完整性校验（这正是 mm-resume 现在 `confirm`+sha256 在做的事，这里用 ETag 更直接）。本 CLI 的 `upload` 走单 PUT，etag 即 MD5，可靠。
+
+### 浏览器直传：sign-upload 和 inspect-upload
+
+- `sign-upload --profile NAME --key KEY --content-type TYPE --size BYTES [--private]` 返回 `url`、`fields` 和 `expiresAt`。表单有效期为 10 分钟，大小为 1 字节至 20 MiB，支持 JPEG、PNG、WebP 和 PDF。浏览器原样提交各字段，再追加一个 `file`。
+- OSS V4 policy 约束对象 key、精确字节数、`x-oss-content-type`、ACL 和禁止覆盖。STS 会话也将写权限约束到单 key、`oss:PutObject` 和指定 ACL。私密对象使用 `private`，公开对象使用 `default` 并继承 Bucket ACL。
+- `inspect-upload --profile NAME --key KEY` 使用独立的单对象 `oss:GetObject` 会话。对象存在时返回 `exists`、`size`、`contentType` 和 Base64 编码的 `header`。先读取元数据，再按 ETag 有条件地读取最多 32 字节。对象不存在时返回 `{"exists":false}`。
+- 接入验收须在真实 OSS 验证合法表单能上传，删除或改写 ACL 和 MIME 后会被拒绝，私密对象无法匿名读取。核对 Bucket 版本控制状态并验证同名写入失败。启用或暂停版本控制时，OSS 会忽略表单的禁止覆盖设置。[阿里云 PostObject](https://help.aliyun.com/en/oss/developer-reference/postobject) · [OSS RAM Policy](https://help.aliyun.com/en/oss/user-guide/ram-policy/)
 
 ### 子命令：resolve
 

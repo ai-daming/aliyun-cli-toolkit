@@ -2,7 +2,7 @@
 
 两个无状态的 Go CLI，把"上传/读取阿里云 OSS 资源"和"阿里云身份证 OCR+核验"从任何宿主应用里解耦出来。
 
-- **`aliyun-media-cli`** — 阿里云 OSS：upload / resolve / stat / list / delete
+- **`aliyun-media-cli`** — 阿里云 OSS：upload / sign-upload / inspect-upload / resolve / stat / list / delete
 - **`aliyun-idcard-cli`** — 阿里云 CloudAuth：身份证 OCR + 二要素核验
 
 ## 特点
@@ -37,6 +37,15 @@ aliyun-media-cli upload --profile mamamate \
   --key private/doc.jpg --file ./doc.jpg --private
 → {"key":"private/doc.jpg","visibility":"private","size":12345,"etag":"..."}
 
+# 签发一份浏览器直传 OSS 的表单（有效期为 10 分钟）
+aliyun-media-cli sign-upload --profile mamamate \
+  --key private/doc.jpg --content-type image/jpeg --size 12345 --private
+# 输出 JSON 含 url、fields、expiresAt。将 fields 原样传给浏览器，file 作为最后一项。
+
+# 确认上传对象是否存在，读取元数据和最多 32 字节的文件头
+aliyun-media-cli inspect-upload --profile mamamate --key private/doc.jpg
+# 输出 JSON 含 exists，存在时还含 size、contentType、header（Base64）。
+
 # 读取私密对象 → 短时签名 URL
 aliyun-media-cli resolve --profile mamamate --key private/doc.jpg --ttl 15m
 → {"url":"https://...signed...","visibility":"private","expiresAt":"..."}
@@ -57,7 +66,7 @@ aliyun-idcard-cli verify --profile verify --front-url "$FRONT"
 
 ## 测试
 
-默认测试不需要真实凭证，也不会访问或删除真实 OSS 对象。list/delete 的协议测试使用本地 HTTP server 驱动真实 STS/OSS SDK，校验请求、最小权限 policy、分页和异常响应；已有云端集成测试仅在显式提供 `profiles.local/` 凭证时运行。
+默认测试不需要真实凭证，也不会访问或删除真实 OSS 对象。list/delete 和浏览器上传的协议测试使用本地 HTTP server 驱动真实 STS/OSS SDK，校验请求、最小权限 policy、分页和异常响应；已有云端集成测试仅在显式提供 `profiles.local/` 凭证时运行。
 
 ```bash
 task test-cover   # 跑测试并报告仓库覆盖率；变更区域门槛 ≥85%
@@ -65,7 +74,7 @@ task test-cover   # 跑测试并报告仓库覆盖率；变更区域门槛 ≥85
 
 ## 状态
 
-✅ `aliyun-media-cli` — 完成（upload/resolve/stat/list/delete/profile）
+✅ `aliyun-media-cli` — 完成（upload/sign-upload/inspect-upload/resolve/stat/list/delete/profile）
 ✅ `aliyun-idcard-cli` — 完成（verify/profile）
 
 ## 设计文档

@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	sdk "github.com/aliyun/aliyun-oss-go-sdk/oss"
@@ -33,7 +32,17 @@ func (c *Client) SignBrowserUpload(ctx context.Context, key, contentType string,
 	if err := validateBrowserUpload(key, contentType, size); err != nil {
 		return UploadForm{}, err
 	}
-	creds, err := c.assumeObjectRole("oss:PutObject", key)
+	acl := "default"
+	if private {
+		acl = "private"
+	}
+	policy, err := buildScopedObjectPolicy(c.prof.Bucket, "oss:PutObject", key, &policyCondition{
+		StringEquals: map[string]string{"oss:x-oss-object-acl": acl},
+	})
+	if err != nil {
+		return UploadForm{}, err
+	}
+	creds, err := c.assumeRole(policy)
 	if err != nil {
 		return UploadForm{}, err
 	}
@@ -44,7 +53,7 @@ func (c *Client) SignBrowserUpload(ctx context.Context, key, contentType string,
 	if domain == "" {
 		domain = fmt.Sprintf("%s.oss-%s.aliyuncs.com", c.prof.Bucket, c.prof.Region)
 	}
-	return buildUploadForm(c.prof.Bucket, c.prof.Region, "https://"+domain, key, contentType, size, private, time.Now(), *creds)
+	return buildUploadForm(c.prof.Bucket, c.prof.Region, "https://"+domain, key, contentType, acl, size, time.Now(), *creds)
 }
 
 func validateBrowserUpload(key, contentType string, size int64) error {
@@ -59,7 +68,7 @@ func validateBrowserUpload(key, contentType string, size int64) error {
 	}
 }
 
-func buildUploadForm(bucket, region, endpoint, key, contentType string, size int64, private bool, now time.Time, creds stsCreds) (UploadForm, error) {
+func buildUploadForm(bucket, region, endpoint, key, contentType, acl string, size int64, now time.Time, creds stsCreds) (UploadForm, error) {
 	target, err := url.Parse(endpoint)
 	if err != nil || target.Scheme != "https" || target.Host == "" || target.User != nil ||
 		target.Path != "" || target.RawQuery != "" || target.Fragment != "" {
@@ -68,13 +77,9 @@ func buildUploadForm(bucket, region, endpoint, key, contentType string, size int
 	expiry := now.UTC().Truncate(time.Second).Add(10 * time.Minute)
 	date := now.UTC().Format("20060102")
 	scope := date + "/" + region + "/oss/aliyun_v4_request"
-	acl := "default"
-	if private {
-		acl = "private"
-	}
 	fields := map[string]string{
 		"key":                     key,
-		"Content-Type":            contentType,
+		"x-oss-content-type":      contentType,
 		"x-oss-object-acl":        acl,
 		"x-oss-forbid-overwrite":  "true",
 		"success_action_status":   "204",
@@ -87,8 +92,8 @@ func buildUploadForm(bucket, region, endpoint, key, contentType string, size int
 		map[string]string{"bucket": bucket},
 		[]any{"content-length-range", size, size},
 	}
-	for _, name := range []string{"key", "Content-Type", "x-oss-object-acl", "x-oss-forbid-overwrite", "success_action_status"} {
-		conditions = append(conditions, []string{"eq", "$" + strings.ToLower(name), fields[name]})
+	for _, name := range []string{"key", "x-oss-content-type", "x-oss-object-acl", "x-oss-forbid-overwrite", "success_action_status"} {
+		conditions = append(conditions, []string{"eq", "$" + name, fields[name]})
 	}
 	for _, name := range []string{"x-oss-credential", "x-oss-security-token", "x-oss-signature-version", "x-oss-date"} {
 		conditions = append(conditions, map[string]string{name: fields[name]})
